@@ -22,7 +22,7 @@ jobs:
                   npm install
             - name: "运行【马克喵签到】"
               run: |
-                  node Scripts/macat/macat_signin.js
+                  node Scripts/macat/macat_signin.js ${{ secrets.MACAT }}
               env:
                   macat: ${{ secrets.MACAT }}
                   
