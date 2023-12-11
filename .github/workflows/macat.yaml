@@ -24,6 +24,6 @@ jobs:
               run: |
                   node Scripts/macat/macat_signin.js
               env:
-                  macat: ${{ secrets.macat }}
+                  macat: ${{ secrets.MACAT }}
                   
 
