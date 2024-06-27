@@ -1,23 +1,14 @@
 /**
  * @author fmz200
  * @function 微博去广告
- * @date 2023-12-11 09:23:00
+ * @date 2024-06-08 21:18:00
  */
-
-const url1 = '/search/finder';
-const url2 = '/search/container_timeline'; // 发现页面
-const url3 = '/search/container_discover';
-const url4 = '/api.weibo.cn/2/page'; // 微博热搜页面url
-const url5 = '/statuses/container_timeline_topicpage'; // 微博超话页面
-const url6 = '/statuses/extend'; // 微博详情页面广告
-const url7 = '/groups/allgroups/v2' // 微博首页Tab标签页 https://api.weibo.cn/2/groups/allgroups/v2
 
 const titleSubPicMap = {
   '电影': 'https://simg.s.weibo.com/imgtool/20221207_dianying.png',
   '热议': 'https://simg.s.weibo.com/20220402_hottopic-icon.png',
   '影像年': 'https://simg.s.weibo.com/ads/1%2Fads_1692185628.png',
   '本地': 'https://simg.s.weibo.com/20190123154142_tongcheng.png',
-  '亚运电竞': 'https://simg.s.weibo.com/ads/1%2Fads_1694765662.png',
   '直播': 'https://simg.s.weibo.com/20210705_live0705.png',
   '财经': 'https://simg.s.weibo.com/20190124150415_caijing.png',
   '找人': 'https://simg.s.weibo.com/20190125144608_zhaoren.png',
@@ -39,57 +30,108 @@ const titleSubPicMap = {
   '游戏中心': 'https://simg.s.weibo.com/ads/1%2Fads_1687759038.png'
 };
 
+// 模块类型，不在里面的都计划删除
+const cardTypes = ["217", "17", ""];
+
 let url = $request.url;
 let body = $response.body;
+let resp_data = JSON.parse(body);
+
 try {
-  body = process();
+    // 1、首次点击发现按钮
+    if (url.includes("/search/finder")) {
+      console.log('进入发现页...');
+      processPayload(resp_data.channelInfo.channels[0].payload);
+    }
+
+    // 2、发现页面刷新/再次点击发现按钮
+    if (url.includes("/search/container_timeline") || url.includes("/search/container_discover")) {
+      console.log('刷新发现页...');
+      processPayload(resp_data);
+    }
+
+    // 3、微博热搜页面刷新
+    if (url.includes("/2/page") && resp_data.cards && resp_data.cards[0].card_group) {
+      resp_data.cards[0].card_group = resp_data.cards[0].card_group.filter(group => group.promotion == null);
+      console.log('处理微博热搜页面广告结束💕💕');
+    }
+
+    // 微博热搜页面 “热搜”tab页 https://api.weibo.cn/2/flowpage
+    if (url.includes("/2/flowpage")) {
+      for (let subItem of resp_data.items) {
+        if (subItem.itemId === "hotword") {
+          subItem.items = subItem.items.filter(group => group.data.promotion == null);
+          break;
+        } else if (subItem.items) {
+          subItem.items = subItem.items.filter(group => group.data.promotion == null);
+        }
+      }
+    }
+
+    // 4、微博超话页面 https://api.weibo.cn/2/statuses/container_timeline_topicpage
+    if (url.includes("/statuses/container_timeline_topicpage") && resp_data.items) {
+      resp_data.items = resp_data.items.filter(item => !item.data || item.data.mblogtypename !== "广告");
+      console.log('处理微博超话页面广告结束💕💕');
+    }
+
+    // 5、微博详情页面
+    if (url.includes("/statuses/extend")) {
+      resp_data.head_cards = [];
+      console.log('处理微博详情页面广告结束💕💕');
+    }
+
+    // 6、移除微博首页的多余tab页 微博首页Tab标签页 https://api.weibo.cn/2/groups/allgroups/v2
+    if (url.includes("/groups/allgroups/v2")) {
+      removePageDataAds(resp_data.pageDatas);
+      // 删除恶心人的“全部微博”
+      delete resp_data.pageDatas[0].categories[0].pageDatas[0];
+    }
+
+    // 7、话题页面 微博话题页面 https://api.weibo.cn/2/searchall
+    if (url.includes("/2/searchall")) {
+      for (let i = 0; i < resp_data.items.length; i++) {
+        if (resp_data.items[i].data?.mblogtypename === "广告" || resp_data.items[i].data?.ad_state === 1) {
+          console.log('处理话题页面广告');
+          resp_data.items[i] = {};
+        }
+      }
+      console.log('处理话题页面广告结束💕💕');
+    }
+
+    // 8、超话tab页 微博超话tab页 https://api.weibo.cn/2/statuses/container_timeline_topic
+    if (url.includes("/statuses/container_timeline_topic?flowId")) {
+      let foundFeed = false;
+      for (let i = 0; i < resp_data.items.length; i++) {
+        const item = resp_data.items[i];
+        const category = item.category;
+        if (foundFeed && category !== "feed") {
+          resp_data.items[i] = {};
+        }
+        if (category === "feed" || category === "card") {
+          foundFeed = true;
+          if (category === "card") {
+            resp_data.items[i] = {};
+          }
+        }
+        if (item.items) {
+          for (let j = 0; j < item.items.length; j++) {
+            const subItem = item.items[j];
+            if (subItem.data?.card_type === 215) {
+              item.items[j] = {};
+            }
+          }
+        }
+      }
+      console.log('处理超话tab页广告结束💕💕');
+    }
+
+    console.log('广告数据处理完毕🧧🧧');
 } catch (e) {
   console.log('脚本运行出现错误，部分广告未去除⚠️');
   console.log('错误信息：' + e.message);
 }
-$done({body});
-
-function process() {
-  let resp_data = JSON.parse(body);
-  // 1、首次点击发现按钮
-  if (url.includes(url1)) {
-    console.log('进入发现页...');
-    processPayload(resp_data.channelInfo.channels[0].payload);
-  }
-
-  // 2、发现页面刷新/再次点击发现按钮
-  if (url.includes(url2) || url.includes(url3)) {
-    console.log('刷新发现页...');
-    processPayload(resp_data);
-  }
-
-  // 3、微博热搜页面刷新
-  if (url.includes(url4) && resp_data.cards && resp_data.cards[0].card_group) {
-    resp_data.cards[0].card_group = resp_data.cards[0].card_group.filter(group => group.promotion == null);
-    console.log('处理微博热搜页面广告结束💕💕');
-  }
-
-  // 4、微博超话页面
-  if (url.includes(url5) && resp_data.items) {
-    resp_data.items = resp_data.items.filter(item => !item.data || item.data.mblogtypename !== "广告");
-    console.log('处理微博超话页面广告结束💕💕');
-  }
-
-  // 5、微博超话页面
-  if (url.includes(url6)) {
-    resp_data.head_cards = [];
-    console.log('处理微博详情页面广告结束💕💕');
-  }
-
-  // 6、移除微博首页的多余tab页
-  if (url.includes(url7)) {
-    removePageDataAds(resp_data.pageDatas);
-    swapObjectsInArray(resp_data.pageDatas[0].categories[0].pageDatas, 0, 1);
-  }
-
-  console.log('广告数据处理完毕🧧🧧');
-  return JSON.stringify(resp_data);
-}
+$done({body:JSON.stringify(resp_data)});
+/***************************方法主体end*********************************/
 
 function processPayload(payload) {
   if (payload.items[0].items) {
@@ -106,21 +148,30 @@ function processPayload(payload) {
 
 function removeCommonAds(items) {
   for (let i = 0; i < items.length; i++) {
+    const card_type = items[i].data?.card_type;
+    console.log(`card_type = ${card_type}`);
+    // 白名单模式
+    if (!cardTypes.includes(card_type)) {
+      console.log('移除多余的模块💕💕');
+      // items[i] = {};
+      // continue;
+    }
     // 1.1、"微博热搜"模块
-    if (items[i].data?.card_type === 17) {
+    if (card_type === 17) {
       console.log('处理微博热搜模块💕💕');
       removeHotSearchAds(items[i].data.group);
     }
-    // 1.2、轮播图模块
-    if (items[i].data?.card_type === 118) {
-      console.log('移除轮播图模块💕💕');
+    // 1.2、轮播图模块 // 118横版广告图片 182热议话题 217错过了热词 247横版视频广告
+    if ([118, 182, 217, 247].includes(card_type)) {
+      console.log('移除轮播图，实况热聊等模块💕💕');
       items[i] = {};
     }
     // 1.3、”热聊、本地、找人“模块
-    if (items[i].data?.card_type === 19) {
+    if ([19, 118, 206, 208, 217, 249].includes(card_type)) {
       console.log('处理热聊、本地、找人模块💕💕');
-      delete items[i].data.more_pic;
-      removeFinderChannelAds(items[i].data.group);
+      items[i] = {};
+      // delete items[i].data.more_pic;
+      // removeFinderChannelAds(items[i].data.group);
     }
   }
 }
@@ -169,17 +220,4 @@ function removePageDataAds(items) {
       items.splice(i, 1);
     }
   }
-}
-
-// 交换集合中两个对象的位置
-function swapObjectsInArray(array, index0, index1) {
-  // array[index0] = {...array[index1]};
-  // array[index0].title = "全部微博";
-  // array[index0].apipath = "statuses/container_timeline_unread";
-  // array[index0].gid = "10001" + array[index0].uid; // 这个属性用来判断是否全部微博，修改后报错
-
-  const temp = array[index0];
-  array[index0] = array[index1];
-  array[index1] = temp;
-  console.log('交换tab页顺序结束💕💕');
 }
